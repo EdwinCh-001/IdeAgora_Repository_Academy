@@ -1,0 +1,281 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model audit_logs {
+  id          BigInt   @id @default(autoincrement())
+  actor_id    String?  @db.Uuid
+  actor_name  String?  @db.VarChar(200)
+  action      String   @db.VarChar(60)
+  entity_type String?  @db.VarChar(60)
+  entity_id   String?  @db.VarChar(60)
+  metadata    Json     @default("{}")
+  ip_address  String?  @db.Inet
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  users       users?   @relation(fields: [actor_id], references: [id], onUpdate: NoAction)
+
+  @@index([actor_id, created_at(sort: Desc)], map: "ix_audit_actor")
+  @@index([entity_type, entity_id], map: "ix_audit_entity")
+}
+
+model campuses {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  university_id      String               @db.Uuid
+  name               String               @db.Citext
+  legal_name         String?              @db.VarChar(200)
+  province           String               @db.VarChar(100)
+  city               String               @db.VarChar(100)
+  reference          String?              @db.VarChar(255)
+  status             entity_status        @default(ACTIVE)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  universities       universities         @relation(fields: [university_id], references: [id], onUpdate: NoAction)
+  faculties          faculties[]
+  university_domains university_domains[]
+  users              users[]
+
+  @@unique([university_id, name], map: "uq_campuses_university_name")
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model careers {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  faculty_id String        @db.Uuid
+  code       String        @db.VarChar(30)
+  name       String        @db.Citext
+  status     entity_status @default(ACTIVE)
+  created_at DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at DateTime      @default(now()) @db.Timestamptz(6)
+  faculties  faculties     @relation(fields: [faculty_id], references: [id], onUpdate: NoAction)
+  users      users[]
+
+  @@unique([faculty_id, code], map: "uq_careers_faculty_code")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model director_documents {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  director_profile_id String            @db.Uuid
+  file_name           String            @db.VarChar(255)
+  storage_path        String            @db.VarChar(500)
+  mime_type           String            @default("application/pdf") @db.VarChar(100)
+  size_bytes          Int
+  uploaded_at         DateTime          @default(now()) @db.Timestamptz(6)
+  director_profiles   director_profiles @relation(fields: [director_profile_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([director_profile_id], map: "ix_dd_profile")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model director_profiles {
+  id                                          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                                     String               @unique @db.Uuid
+  summary                                     String?
+  specializations                             Json                 @default("[]")
+  academic_degrees                            Json                 @default("[]")
+  work_experience                             Json                 @default("[]")
+  external_links                              Json                 @default("[]")
+  validation_status                           validation_status    @default(PENDING)
+  validated_by                                String?              @db.Uuid
+  validated_at                                DateTime?            @db.Timestamptz(6)
+  rejection_reason                            String?
+  created_at                                  DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at                                  DateTime             @default(now()) @db.Timestamptz(6)
+  director_documents                          director_documents[]
+  users_director_profiles_user_idTousers      users                @relation("director_profiles_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users_director_profiles_validated_byTousers users?               @relation("director_profiles_validated_byTousers", fields: [validated_by], references: [id], onDelete: Restrict, onUpdate: NoAction)
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model faculties {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  university_id String        @db.Uuid
+  campus_id     String?       @db.Uuid
+  name          String        @db.Citext
+  acronym       String?       @db.VarChar(20)
+  status        entity_status @default(ACTIVE)
+  created_at    DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime      @default(now()) @db.Timestamptz(6)
+  careers       careers[]
+  campuses      campuses?     @relation(fields: [campus_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  universities  universities  @relation(fields: [university_id], references: [id], onUpdate: NoAction)
+  users         users[]
+}
+
+model interest_catalog {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name           String           @unique @db.Citext
+  is_default     Boolean          @default(false)
+  created_at     DateTime         @default(now()) @db.Timestamptz(6)
+  user_interests user_interests[]
+}
+
+model refresh_tokens {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String    @db.Uuid
+  token_hash String    @unique @db.VarChar(128)
+  expires_at DateTime  @db.Timestamptz(6)
+  revoked_at DateTime? @db.Timestamptz(6)
+  user_agent String?   @db.VarChar(255)
+  ip_address String?   @db.Inet
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model universities {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accreditation_code String               @unique @db.Citext
+  name               String               @unique(map: "uq_universities_name") @db.Citext
+  acronym            String?              @db.VarChar(20)
+  province           String               @db.VarChar(100)
+  city               String               @db.VarChar(100)
+  website            String?              @db.VarChar(255)
+  status             university_status    @default(PENDING)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  campuses           campuses[]
+  faculties          faculties[]
+  university_domains university_domains[]
+  users              users[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model university_domains {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  university_id String       @db.Uuid
+  campus_id     String?      @db.Uuid
+  domain        String       @unique @db.Citext
+  created_at    DateTime     @default(now()) @db.Timestamptz(6)
+  campuses      campuses?    @relation(fields: [campus_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  universities  universities @relation(fields: [university_id], references: [id], onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_interests {
+  user_id          String           @db.Uuid
+  interest_id      String           @db.Uuid
+  created_at       DateTime         @default(now()) @db.Timestamptz(6)
+  interest_catalog interest_catalog @relation(fields: [interest_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users            users            @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([user_id, interest_id])
+  @@index([interest_id], map: "ix_user_interests_interest")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model user_suspensions {
+  id                                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                                  String    @db.Uuid
+  created_by                               String    @db.Uuid
+  reason                                   String
+  starts_at                                DateTime  @default(now()) @db.Timestamptz(6)
+  ends_at                                  DateTime? @db.Timestamptz(6)
+  lifted_at                                DateTime? @db.Timestamptz(6)
+  lifted_by                                String?   @db.Uuid
+  lift_reason                              String?
+  created_at                               DateTime  @default(now()) @db.Timestamptz(6)
+  users_user_suspensions_created_byTousers users     @relation("user_suspensions_created_byTousers", fields: [created_by], references: [id], onUpdate: NoAction)
+  users_user_suspensions_lifted_byTousers  users?    @relation("user_suspensions_lifted_byTousers", fields: [lifted_by], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  users_user_suspensions_user_idTousers    users     @relation("user_suspensions_user_idTousers", fields: [user_id], references: [id], onUpdate: NoAction)
+
+  @@index([user_id, starts_at(sort: Desc)], map: "ix_susp_user")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model users {
+  id                                                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                                                   String                @unique @db.Citext
+  password_hash                                           String                @db.VarChar(255)
+  first_name                                              String                @db.VarChar(100)
+  last_name                                               String                @db.VarChar(100)
+  username                                                String?               @unique @db.Citext
+  role                                                    user_role             @default(STUDENT)
+  status                                                  user_status           @default(PENDING_VERIFICATION)
+  university_id                                           String?               @db.Uuid
+  campus_id                                               String?               @db.Uuid
+  faculty_id                                              String?               @db.Uuid
+  career_id                                               String?               @db.Uuid
+  phone                                                   String?               @db.VarChar(20)
+  job_title                                               String?               @db.VarChar(120)
+  avatar_url                                              String?               @db.VarChar(500)
+  email_verified_at                                       DateTime?             @db.Timestamptz(6)
+  failed_login_attempts                                   Int                   @default(0) @db.SmallInt
+  locked_until                                            DateTime?             @db.Timestamptz(6)
+  last_login_at                                           DateTime?             @db.Timestamptz(6)
+  created_at                                              DateTime              @default(now()) @db.Timestamptz(6)
+  updated_at                                              DateTime              @default(now()) @db.Timestamptz(6)
+  audit_logs                                              audit_logs[]
+  director_profiles_director_profiles_user_idTousers      director_profiles?    @relation("director_profiles_user_idTousers")
+  director_profiles_director_profiles_validated_byTousers director_profiles[]   @relation("director_profiles_validated_byTousers")
+  refresh_tokens                                          refresh_tokens[]
+  user_interests                                          user_interests[]
+  user_suspensions_user_suspensions_created_byTousers     user_suspensions[]    @relation("user_suspensions_created_byTousers")
+  user_suspensions_user_suspensions_lifted_byTousers      user_suspensions[]    @relation("user_suspensions_lifted_byTousers")
+  user_suspensions_user_suspensions_user_idTousers        user_suspensions[]    @relation("user_suspensions_user_idTousers")
+  campuses                                                campuses?             @relation(fields: [campus_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  careers                                                 careers?              @relation(fields: [career_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  faculties                                               faculties?            @relation(fields: [faculty_id], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  universities                                            universities?         @relation(fields: [university_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_user_university")
+  verification_tokens                                     verification_tokens[]
+
+  @@index([career_id], map: "ix_users_career")
+  @@index([faculty_id], map: "ix_users_faculty")
+  @@index([university_id, role], map: "ix_users_university")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model verification_tokens {
+  id         String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String     @db.Uuid
+  type       token_type
+  token_hash String     @unique @db.VarChar(128)
+  expires_at DateTime   @db.Timestamptz(6)
+  used_at    DateTime?  @db.Timestamptz(6)
+  created_at DateTime   @default(now()) @db.Timestamptz(6)
+  users      users      @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, type], map: "ix_vtokens_user")
+}
+
+enum entity_status {
+  ACTIVE
+  INACTIVE
+}
+
+enum token_type {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  ADMIN_PASSWORD_SETUP
+}
+
+enum university_status {
+  PENDING
+  ACTIVE
+  INACTIVE
+}
+
+enum user_role {
+  ADMIN_GLOBAL
+  ADMIN_LOCAL
+  STUDENT
+  DIRECTOR
+}
+
+enum user_status {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum validation_status {
+  PENDING
+  APPROVED
+  REJECTED
+}
